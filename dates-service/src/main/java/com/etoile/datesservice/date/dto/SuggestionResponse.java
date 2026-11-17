@@ -15,12 +15,13 @@ public record SuggestionResponse(
         int releaseYear,
         String synopsis,
         String youtubeUrl,
-        Set<Genre> genres
+        Set<Genre> genres,
+        boolean shortlisted
 ) {
     public static SuggestionResponse from(MovieSuggestion s) {
         // EnumSet keeps genres in the order they are listed in Genre, so capsules don't shuffle.
         Set<Genre> genres = s.getGenres().isEmpty() ? EnumSet.noneOf(Genre.class) : EnumSet.copyOf(s.getGenres());
         return new SuggestionResponse(s.getId(), s.getSuggestedByRole(), s.getTitle(), s.getReleaseYear(),
-                s.getSynopsis(), s.getYoutubeUrl(), genres);
+                s.getSynopsis(), s.getYoutubeUrl(), genres, s.isShortlisted());
     }
 }

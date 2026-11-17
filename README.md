@@ -12,19 +12,36 @@ Built as a hands-on learning project: **Kotlin + Jetpack Compose** on Android an
 
 | Type | Chosen at creation | Extra details |
 |---|---|---|
-| 🎬 **Movie date** (long-distance) | Date & time | 0–2 movie suggestions from each person |
+| 🎬 **Movie date** (long-distance) | Date & time | Up to 2 movie suggestions per person at a time |
 | ☕ **Meeting** | Date & time, place | Google Maps link, activity |
 | 🧳 **Trip** | Date range, place | Itinerary |
 
 ### How a date works
 
 - **Propose → accept / reject / cancel.** The receiver gets a notification and can accept or reject (rejecting is free). Cancelling costs saying *sorry* five times: the proposer can withdraw a pending invitation, and once a date is accepted either person can cancel it.
-- **Movie suggestions.** Title and release year are required. Synopsis, YouTube trailer (shown as a thumbnail) and up to 5 genres (shown as coloured capsules) are optional. Suggestions close 5 hours before the date.
-- **Picking the movie.**
-  - 0 suggestions → decided outside the app
-  - 1 suggestion → that's the movie
-  - 2+ suggestions → vote → if the vote splits, talk it out on a call → if still stuck, a weighted random pick
-- **Rescheduling.** A reschedule is a *request*, not a new time. The other person gets reminders (paused at night) until they open it and acknowledge with a cheeky button. You agree on a time together, then either of you enters it. Only the requester can cancel a reschedule.
+- **Movie suggestions.** Title and release year are required. Synopsis, YouTube trailer (shown as a thumbnail) and up to 5 genres (shown as coloured capsules) are optional.
+- **Rescheduling.** A reschedule is a *request*, not a new time. The other person gets reminders (paused at night) until they open it and acknowledge with a cheeky button, which leads to a "We need to talk…" page. You agree on a time together, then either of you enters it (only after the acknowledgement). Only the requester can cancel a reschedule. Allowed any time before the date starts.
+
+### Picking the movie 🍿
+
+Every movie date has two lists:
+
+- **🎯 Shortlist:** movies in the running. Each person can have at most **2 suggestions** on it at a time.
+- **🗂️ Shelf:** every movie that came up but is out of the running. Reference only; any movie can be brought back.
+
+| Situation | Result |
+|---|---|
+| 0 movies | Decided outside the app |
+| 1 movie in the running | That's the movie |
+| Both vote for the same movie | Decided |
+| Votes differ | **Vote fails.** The shortlist narrows to the two voted movies, the rest go to the shelf |
+| After talking it over: one of the two narrowed movies | Decided, *"We talked, we agreed 🤝"* |
+| After talking it over: a shelf movie or a brand-new one | Decided, *"Okay fine, this one 😤"* (uses no suggestion slot) |
+| Still stuck: **pick randomly** | Her voted movie 60%, his 40%. **Final**, nothing can change afterwards |
+
+- **Votes are secret** until both have voted. You can change your vote until the other person votes.
+- **Changing your mind is allowed** (*"Indecisive much… 👀"*): adding a movie or bringing one back from the shelf reopens voting at any stage before the random pick. Removing a movie moves it to the shelf, and only resets the votes if someone had voted for it.
+- **Timing:** the first round of suggestions closes 5 hours before the date. After the first vote, movies can be added until the date starts.
 - **"Want some love?" 💗** Tap a heart and the other person gets a push notification.
 
 ### Genres
@@ -92,7 +109,7 @@ etoile/
 | Part | Status |
 |---|---|
 | auth-service | ✅ Done: signup, login, BCrypt, JWT, HIM/HER roles |
-| dates-service | 🚧 In progress: create, accept/reject/cancel and suggestions done; rescheduling, movie decision and listing next |
+| dates-service | ✅ Done: dates, accept/reject/cancel, rescheduling, movie shortlist/shelf, secret voting, random pick, listing. Push hooks come with notification-service |
 | notification-service | ⏳ Not started |
 | android-app | ⏳ Not started |
 | Deployment (Render) | ⏳ Not started |
@@ -152,15 +169,46 @@ Every endpoint except signup and login needs the header `Authorization: Bearer <
 
 | Method | Path | Body | Success |
 |---|---|---|---|
-| `GET` | `/api/me` | — | `200` → caller's `id`, `role`, `name` |
-| `POST` | `/api/dates/movie` | `startsAt`, `suggestions[]` (0–2) | `201` → date |
-| `POST` | `/api/dates/meeting` | `startsAt`, `place`, `mapsLink`, `activity` | `201` → date |
-| `POST` | `/api/dates/trip` | `startsAt`, `endsAt`, `place`, `itinerary` | `201` → date |
-| `POST` | `/api/dates/{id}/accept` | — | `200` → date (receiver only, while proposed) |
-| `POST` | `/api/dates/{id}/reject` | — | `200` → date (receiver only, while proposed) |
-| `POST` | `/api/dates/{id}/cancel` | `sorryCount` (must be 5) | `200` → date (proposer while proposed; either person once accepted) |
-| `POST` | `/api/dates/{id}/suggestions` | one suggestion | `201` → date (accepted movie dates, max 2 each, closes 5 h before) |
-| `DELETE` | `/api/dates/{id}/suggestions/{suggestionId}` | — | `200` → date (own suggestions only) |
+Every endpoint below returns the full **date**, built for the caller (so the other person's vote stays hidden until both have voted). A date includes `shortlist`, `shelf`, `decision`, `voting` and `reschedule`.
+
+**General**
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `GET` | `/api/me` | — | Caller's `id`, `role`, `name` |
+| `GET` | `/api/dates` | — | Upcoming dates, soonest first. `?scope=past` for past ones |
+| `GET` | `/api/dates/{id}` | — | One date |
+
+**Create and respond**
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/api/dates/movie` | `startsAt`, `suggestions[]` (0–2) | `201` |
+| `POST` | `/api/dates/meeting` | `startsAt`, `place`, `mapsLink`, `activity` | `201` |
+| `POST` | `/api/dates/trip` | `startsAt`, `endsAt`, `place`, `itinerary` | `201` |
+| `POST` | `/api/dates/{id}/accept` | — | Receiver, while proposed |
+| `POST` | `/api/dates/{id}/reject` | — | Receiver, while proposed |
+| `POST` | `/api/dates/{id}/cancel` | `sorryCount` (must be 5) | Proposer while proposed; either person once accepted |
+
+**Reschedule**
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/api/dates/{id}/reschedule` | — | Either person, accepted dates |
+| `POST` | `/api/dates/{id}/reschedule/acknowledge` | — | The other person |
+| `POST` | `/api/dates/{id}/reschedule/new-time` | `startsAt`, `endsAt` (trips) | Either person, after the acknowledgement |
+| `POST` | `/api/dates/{id}/reschedule/cancel` | — | The requester |
+
+**Movie decision**
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/api/dates/{id}/suggestions` | one suggestion | `201`. Needs a free slot; reopens voting |
+| `POST` | `/api/dates/{id}/suggestions/{sid}/shelve` | — | Your own suggestion, or the agreed movie |
+| `POST` | `/api/dates/{id}/suggestions/{sid}/bring-back` | — | Uses your slot; reopens voting |
+| `POST` | `/api/dates/{id}/vote` | `suggestionId` | Secret until both have voted |
+| `POST` | `/api/dates/{id}/agree` | `suggestionId` **or** `newMovie` | After a failed vote |
+| `POST` | `/api/dates/{id}/random-pick` | — | After a failed vote. 60/40, final |
 
 <details>
 <summary>Example: propose a movie date</summary>
@@ -192,14 +240,19 @@ Response `201 Created`:
   "status": "PROPOSED",
   "proposedBy": "HIM",
   "startsAt": "2026-11-25T14:30:00Z",
-  "suggestions": [
+  "shortlist": [
     {
       "suggestedBy": "HIM",
       "title": "Your Name",
       "releaseYear": 2016,
-      "genres": ["FANTASY", "ROMANCE", "ANIME"]
+      "genres": ["FANTASY", "ROMANCE", "ANIME"],
+      "shortlisted": true
     }
-  ]
+  ],
+  "shelf": [],
+  "decision": { "movieId": "…", "title": "Your Name", "method": "ONLY_ONE", "isFinal": false },
+  "voting": { "himVoted": false, "herVoted": false },
+  "reschedule": null
 }
 ```
 
@@ -213,10 +266,10 @@ Times are stored and returned in UTC (`Z`). The app converts them to local time.
 - [x] auth-service: signup, login, JWT, roles
 - [x] dates-service: create movie, meeting and trip dates
 - [x] dates-service: accept, reject, cancel
-- [x] dates-service: add and remove movie suggestions
-- [ ] dates-service: voting, weighted random pick
-- [ ] dates-service: reschedule requests
-- [ ] dates-service: list upcoming dates, date details
+- [x] dates-service: movie shortlist and shelf
+- [x] dates-service: secret voting, call decision, weighted random pick
+- [x] dates-service: reschedule requests
+- [x] dates-service: list upcoming / past dates, date details
 - [ ] auth-service: change password
 - [ ] notification-service: FCM push, reschedule reminders, "Want some love?"
 - [ ] android-app

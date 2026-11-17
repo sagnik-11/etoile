@@ -3,6 +3,7 @@ package com.etoile.datesservice.date;
 import com.etoile.datesservice.security.CurrentUser;
 import com.etoile.datesservice.security.Role;
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -49,6 +50,26 @@ public class DatePlan {
 
     @Column(columnDefinition = "text")
     private String itinerary;
+
+    @ColumnDefault("false")
+    @Column(name = "voting_started", nullable = false)
+    private boolean votingStarted;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "decided_movie_id")
+    private MovieSuggestion decidedMovie;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "decision_method", length = 20)
+    private DecisionMethod decisionMethod;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "her_pick_id")
+    private MovieSuggestion herPick;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "him_pick_id")
+    private MovieSuggestion himPick;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -97,10 +118,43 @@ public class DatePlan {
         this.status = DateStatus.REJECTED;
     }
 
+    public void moveTo(Instant startsAt, Instant endsAt) {
+        this.startsAt = startsAt;
+        this.endsAt = endsAt;
+    }
+
     public void cancel(Role by) {
         this.status = DateStatus.CANCELLED;
         this.cancelledBy = by;
     }
+
+    public void startVoting() {
+        this.votingStarted = true;
+    }
+
+    public void narrow(MovieSuggestion herPick, MovieSuggestion himPick) {
+        this.herPick = herPick;
+        this.himPick = himPick;
+    }
+
+    public void decide(MovieSuggestion movie, DecisionMethod method) {
+        this.decidedMovie = movie;
+        this.decisionMethod = method;
+    }
+
+    public void resetDecision() {
+        this.decidedMovie = null;
+        this.decisionMethod = null;
+        this.herPick = null;
+        this.himPick = null;
+    }
+
+    public boolean isLocked() { return decisionMethod == DecisionMethod.RANDOM; }
+
+    public MovieSuggestion getDecidedMovie() { return decidedMovie; }
+    public DecisionMethod getDecisionMethod() { return decisionMethod; }
+    public MovieSuggestion getHerPick() { return herPick; }
+    public MovieSuggestion getHimPick() { return himPick; }
 
     public UUID getId() { return id; }
     public DateType getType() { return type; }
@@ -108,6 +162,7 @@ public class DatePlan {
     public UUID getProposerId() { return proposerId; }
     public Role getProposerRole() { return proposerRole; }
     public Role getCancelledBy() { return cancelledBy; }
+    public boolean isVotingStarted() { return votingStarted; }
     public Instant getStartsAt() { return startsAt; }
     public Instant getEndsAt() { return endsAt; }
     public String getPlace() { return place; }

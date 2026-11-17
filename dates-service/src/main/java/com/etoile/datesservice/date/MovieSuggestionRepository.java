@@ -10,5 +10,7 @@ public interface MovieSuggestionRepository extends JpaRepository<MovieSuggestion
 
     List<MovieSuggestion> findByDatePlanIdOrderByCreatedAtAsc(UUID datePlanId);
 
-    long countByDatePlanIdAndSuggestedByRole(UUID datePlanId, Role role);
+    long countByDatePlanIdAndSuggestedByRoleAndShortlistedTrueAndAgreedFalse(UUID datePlanId, Role role);
+
+    List<MovieSuggestion> findByDatePlanIdAndShortlistedTrue(UUID datePlanId);
 }

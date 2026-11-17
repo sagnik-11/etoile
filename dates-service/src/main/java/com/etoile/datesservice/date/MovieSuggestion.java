@@ -3,6 +3,7 @@ package com.etoile.datesservice.date;
 import com.etoile.datesservice.security.CurrentUser;
 import com.etoile.datesservice.security.Role;
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -46,6 +47,14 @@ public class MovieSuggestion {
     @Column(name = "genre", nullable = false, length = 20)
     private Set<Genre> genres = new HashSet<>();
 
+    @ColumnDefault("true")
+    @Column(nullable = false)
+    private boolean shortlisted = true;
+
+    @ColumnDefault("false")
+    @Column(nullable = false)
+    private boolean agreed;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -71,6 +80,23 @@ public class MovieSuggestion {
         this.createdAt = Instant.now();
     }
 
+    public void markAgreed() {
+        this.agreed = true;
+        this.shortlisted = true;
+    }
+
+    public void moveToShelf() {
+        this.shortlisted = false;
+        this.agreed = false;
+    }
+
+    public void bringBack(CurrentUser by) {
+        this.shortlisted = true;
+        this.agreed = false;
+        this.suggestedById = by.id();
+        this.suggestedByRole = by.role();
+    }
+
     public UUID getId() { return id; }
     public DatePlan getDatePlan() { return datePlan; }
     public UUID getSuggestedById() { return suggestedById; }
@@ -80,5 +106,7 @@ public class MovieSuggestion {
     public String getSynopsis() { return synopsis; }
     public String getYoutubeUrl() { return youtubeUrl; }
     public Set<Genre> getGenres() { return genres; }
+    public boolean isShortlisted() { return shortlisted; }
+    public boolean isAgreed() { return agreed; }
     public Instant getCreatedAt() { return createdAt; }
 }
