@@ -15,6 +15,7 @@ public record DatePlanResponse(
         DateType type,
         DateStatus status,
         Role proposedBy,
+        Role cancelledBy,
         Instant startsAt,
         Instant endsAt,
         String place,
@@ -25,7 +26,7 @@ public record DatePlanResponse(
         List<SuggestionResponse> suggestions
 ) {
     public static DatePlanResponse from(DatePlan d, List<MovieSuggestion> suggestions) {
-        return new DatePlanResponse(d.getId(), d.getType(), d.getStatus(), d.getProposerRole(),
+        return new DatePlanResponse(d.getId(), d.getType(), d.getStatus(), d.getProposerRole(), d.getCancelledBy(),
                 d.getStartsAt(), d.getEndsAt(), d.getPlace(), d.getMapsLink(), d.getActivity(),
                 d.getItinerary(), d.getCreatedAt(),
                 suggestions.stream().map(SuggestionResponse::from).toList());

@@ -18,7 +18,7 @@ Built as a hands-on learning project: **Kotlin + Jetpack Compose** on Android an
 
 ### How a date works
 
-- **Propose → accept / reject / cancel.** The receiver gets a notification. Rejecting means saying *sorry* five times. The proposer can cancel.
+- **Propose → accept / reject / cancel.** The receiver gets a notification and can accept or reject (rejecting is free). Cancelling costs saying *sorry* five times: the proposer can withdraw a pending invitation, and once a date is accepted either person can cancel it.
 - **Movie suggestions.** Title and release year are required. Synopsis, YouTube trailer (shown as a thumbnail) and up to 5 genres (shown as coloured capsules) are optional. Suggestions close 5 hours before the date.
 - **Picking the movie.**
   - 0 suggestions → decided outside the app
@@ -92,7 +92,7 @@ etoile/
 | Part | Status |
 |---|---|
 | auth-service | ✅ Done: signup, login, BCrypt, JWT, HIM/HER roles |
-| dates-service | 🚧 In progress: create dates (movie, meeting, trip) done; accept/reject, suggestions, rescheduling, voting next |
+| dates-service | 🚧 In progress: create, accept/reject/cancel and suggestions done; rescheduling, movie decision and listing next |
 | notification-service | ⏳ Not started |
 | android-app | ⏳ Not started |
 | Deployment (Render) | ⏳ Not started |
@@ -156,6 +156,11 @@ Every endpoint except signup and login needs the header `Authorization: Bearer <
 | `POST` | `/api/dates/movie` | `startsAt`, `suggestions[]` (0–2) | `201` → date |
 | `POST` | `/api/dates/meeting` | `startsAt`, `place`, `mapsLink`, `activity` | `201` → date |
 | `POST` | `/api/dates/trip` | `startsAt`, `endsAt`, `place`, `itinerary` | `201` → date |
+| `POST` | `/api/dates/{id}/accept` | — | `200` → date (receiver only, while proposed) |
+| `POST` | `/api/dates/{id}/reject` | — | `200` → date (receiver only, while proposed) |
+| `POST` | `/api/dates/{id}/cancel` | `sorryCount` (must be 5) | `200` → date (proposer while proposed; either person once accepted) |
+| `POST` | `/api/dates/{id}/suggestions` | one suggestion | `201` → date (accepted movie dates, max 2 each, closes 5 h before) |
+| `DELETE` | `/api/dates/{id}/suggestions/{suggestionId}` | — | `200` → date (own suggestions only) |
 
 <details>
 <summary>Example: propose a movie date</summary>
@@ -207,9 +212,11 @@ Times are stored and returned in UTC (`Z`). The app converts them to local time.
 
 - [x] auth-service: signup, login, JWT, roles
 - [x] dates-service: create movie, meeting and trip dates
-- [ ] dates-service: accept, reject, cancel
-- [ ] dates-service: suggestions, voting, weighted random pick
+- [x] dates-service: accept, reject, cancel
+- [x] dates-service: add and remove movie suggestions
+- [ ] dates-service: voting, weighted random pick
 - [ ] dates-service: reschedule requests
+- [ ] dates-service: list upcoming dates, date details
 - [ ] auth-service: change password
 - [ ] notification-service: FCM push, reschedule reminders, "Want some love?"
 - [ ] android-app

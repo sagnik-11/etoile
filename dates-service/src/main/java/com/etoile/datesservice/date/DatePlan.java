@@ -30,6 +30,10 @@ public class DatePlan {
     @Column(name = "proposer_role", nullable = false, length = 10)
     private Role proposerRole;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancelled_by", length = 10)
+    private Role cancelledBy;
+
     @Column(name = "starts_at", nullable = false)
     private Instant startsAt;
 
@@ -85,11 +89,25 @@ public class DatePlan {
         this.createdAt = Instant.now();
     }
 
+    public void accept() {
+        this.status = DateStatus.ACCEPTED;
+    }
+
+    public void reject() {
+        this.status = DateStatus.REJECTED;
+    }
+
+    public void cancel(Role by) {
+        this.status = DateStatus.CANCELLED;
+        this.cancelledBy = by;
+    }
+
     public UUID getId() { return id; }
     public DateType getType() { return type; }
     public DateStatus getStatus() { return status; }
     public UUID getProposerId() { return proposerId; }
     public Role getProposerRole() { return proposerRole; }
+    public Role getCancelledBy() { return cancelledBy; }
     public Instant getStartsAt() { return startsAt; }
     public Instant getEndsAt() { return endsAt; }
     public String getPlace() { return place; }
