@@ -1,0 +1,8 @@
+# IntelliJ project files (contain local run settings)
+.idea/
+*.iml
+*.iws
+out/
+
+# Build output
+target/
