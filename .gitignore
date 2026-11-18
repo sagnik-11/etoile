@@ -6,3 +6,8 @@ out/
 
 # Build output
 target/
+
+# Secrets: never commit Firebase keys or a secrets folder
+*firebase*.json
+*-adminsdk-*.json
+secrets/
