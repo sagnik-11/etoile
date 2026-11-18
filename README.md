@@ -42,7 +42,14 @@ Every movie date has two lists:
 - **Votes are secret** until both have voted. You can change your vote until the other person votes.
 - **Changing your mind is allowed** (*"Indecisive much… 👀"*): adding a movie or bringing one back from the shelf reopens voting at any stage before the random pick. Removing a movie moves it to the shelf, and only resets the votes if someone had voted for it.
 - **Timing:** the first round of suggestions closes 5 hours before the date. After the first vote, movies can be added until the date starts.
-- **"Want some love?" 💗** Tap a heart and the other person gets a push notification.
+
+### Notifications 🔔
+
+- **Date events go to the other person:** new invitation, accepted, rejected, cancelled, reschedule requested / acknowledged / new time / cancelled, new movie suggested, "has voted" (not *which* movie), votes split. The final movie decision goes to both.
+- **Merged, not stacked.** Pushes about the same date replace each other on the phone, and new movies are counted ("2 new movies for your movie date on 28 Nov, 7:30 PM").
+- **Send love 💗.** The first love buzzes. More love before it is seen quietly updates the same notification, with texts that escalate by count (×2 … *"Incoming love overload"* … *"Love levels critical!"* … *"System overloaded with love"*).
+- **Need love 🥺.** Asks the other person for love. Pressing it again sends a fresh, cheekier push and restarts the reminders.
+- **Reminders** (Need love and reschedule requests only): every 5 minutes for up to 30 minutes, until the other person responds. They pause during quiet hours (00:30–07:30 India time) and resume afterwards. One-off pushes are still delivered at night.
 
 ### Genres
 
@@ -61,20 +68,22 @@ flowchart LR
     dates["dates-service<br/>:8082"]
     notif["notification-service<br/>:8083"]
     fcm["Firebase Cloud<br/>Messaging"]
-    db[("Neon Postgres<br/>schemas: public · dates")]
+    db[("Neon Postgres<br/>schemas: public · dates · notifications")]
 
     app -- "signup / login → JWT" --> auth
     app -- "Bearer JWT" --> dates
     app -- "Bearer JWT" --> notif
-    dates -. "send push" .-> notif
+    dates -. "date events" .-> notif
     notif --> fcm --> app
     auth --> db
     dates --> db
+    notif --> db
 ```
 
 - **No API gateway (v1).** The app calls each service directly.
 - **One database, separate schemas.** Each service owns its own tables.
 - **Stateless JWT auth.** auth-service signs tokens (HS256). The other services only verify them, reading the user's id and role straight from the token.
+- **Date events.** After a change is saved, dates-service tells notification-service in the background, forwarding the acting user's own JWT. If notification-service is down, the date action still succeeds.
 - **Exactly two accounts.** Each user has a role, `HIM` or `HER`, and the database allows only one of each. The role drives small per-person differences in the app and the 60/40 tie-break weighting.
 
 ---
@@ -86,7 +95,7 @@ flowchart LR
 | Backend | Java 21, Spring Boot 4.1, Spring Security (OAuth2 Resource Server / Nimbus JWT), Spring Data JPA, Bean Validation |
 | Database | PostgreSQL on [Neon](https://neon.tech) (free tier) |
 | Android | Kotlin, Jetpack Compose *(planned)* |
-| Push | Firebase Cloud Messaging *(planned)* |
+| Push | Firebase Cloud Messaging (Firebase Admin SDK) |
 | Hosting | [Render](https://render.com) free tier *(planned)* |
 | Build | Maven |
 
@@ -98,7 +107,7 @@ flowchart LR
 etoile/
 ├── auth-service/          # signup, login, JWT issuing
 ├── dates-service/         # dates, suggestions, voting, rescheduling
-├── notification-service/  # push notifications (planned)
+├── notification-service/  # push notifications, love, reminders
 └── android-app/           # Kotlin + Compose client (planned)
 ```
 
@@ -109,8 +118,8 @@ etoile/
 | Part | Status |
 |---|---|
 | auth-service | ✅ Done: signup, login, BCrypt, JWT, HIM/HER roles |
-| dates-service | ✅ Done: dates, accept/reject/cancel, rescheduling, movie shortlist/shelf, secret voting, random pick, listing. Push hooks come with notification-service |
-| notification-service | ⏳ Not started |
+| dates-service | ✅ Done: dates, accept/reject/cancel, rescheduling, movie shortlist/shelf, secret voting, random pick, listing, date events for notifications |
+| notification-service | ✅ Done: device registration, FCM push with merging, date notifications, send/need love, reminders with quiet hours |
 | android-app | ⏳ Not started |
 | Deployment (Render) | ⏳ Not started |
 
@@ -134,11 +143,21 @@ Secrets are **never** stored in this repo. Each service reads them from environm
 | `DB_USER` | all services | Database user |
 | `DB_PASSWORD` | all services | Database password |
 | `JWT_SECRET` | all services | Base64-encoded key of at least 32 random bytes. **Must be identical in every service.** |
+| `FIREBASE_CREDENTIALS` | notification-service | Base64 of the Firebase service-account JSON. Empty = log-only mode (pushes are only logged) |
+| `NOTIFICATIONS_URL` | dates-service | Optional. Where notification-service runs. Default `http://localhost:8083` |
+
+Optional, for notification-service testing: `REMINDER_EVERY_SECONDS` (default 300), `REMINDER_WINDOW_SECONDS` (1800), `REMINDER_TICK_MS` (30000), `QUIET_START` (00:30), `QUIET_END` (07:30).
 
 Generate a `JWT_SECRET` in PowerShell (it goes straight to the clipboard, never on screen):
 
 ```powershell
 $b = New-Object byte[] 48; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b) | Set-Clipboard
+```
+
+Copy the Firebase key as Base64 for `FIREBASE_CREDENTIALS` (keep the key file **outside** this repo; use your own path):
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\outside\repo\firebase-key.json")) | Set-Clipboard
 ```
 
 ### Start the services
@@ -149,6 +168,7 @@ Run each service's main class from IntelliJ:
 |---|---|---|
 | auth-service | `com.etoile.authservice.AuthServiceApplication` | 8081 |
 | dates-service | `com.etoile.datesservice.DatesServiceApplication` | 8082 |
+| notification-service | `com.etoile.notificationservice.NotificationServiceApplication` | 8083 |
 
 Tables are created automatically on startup (`ddl-auto=update`).
 
@@ -167,8 +187,6 @@ Every endpoint except signup and login needs the header `Authorization: Bearer <
 
 ### dates-service (`:8082`)
 
-| Method | Path | Body | Success |
-|---|---|---|---|
 Every endpoint below returns the full **date**, built for the caller (so the other person's vote stays hidden until both have voted). A date includes `shortlist`, `shelf`, `decision`, `voting` and `reschedule`.
 
 **General**
@@ -259,6 +277,20 @@ Response `201 Created`:
 Times are stored and returned in UTC (`Z`). The app converts them to local time.
 </details>
 
+### notification-service (`:8083`)
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/api/devices` | `token` | Register this phone's FCM token for the caller |
+| `POST` | `/api/devices/unregister` | `token` | On logout |
+| `POST` | `/api/notifications/seen` | `groupKey` (e.g. `date-<id>`) | `204`. Resets that group's merged count |
+| `POST` | `/api/notifications/test` | — | Sends yourself a test push |
+| `GET` | `/api/love` | — | `loveReceived`, `theyNeedYou`, `youAreWaiting` |
+| `POST` | `/api/love/send` | `taps` (1–100) | One burst of hearts |
+| `POST` | `/api/love/need` | — | Ask for love; starts reminders |
+| `POST` | `/api/love/seen` | — | Love icon opened: clears count, highlight and reminders |
+| `POST` | `/api/events/date` | `type`, `dateId`, `dateType`, `startsAt`, … | `204`. Called by dates-service, not the app |
+
 ---
 
 ## Roadmap
@@ -271,6 +303,8 @@ Times are stored and returned in UTC (`Z`). The app converts them to local time.
 - [x] dates-service: reschedule requests
 - [x] dates-service: list upcoming / past dates, date details
 - [ ] auth-service: change password
-- [ ] notification-service: FCM push, reschedule reminders, "Want some love?"
+- [x] notification-service: FCM push with merging, date notifications
+- [x] notification-service: send love / need love, reminders with quiet hours
+- [ ] deployment (Render or Oracle Cloud)
 - [ ] android-app
 - [ ] Deploy to Render (free tier)

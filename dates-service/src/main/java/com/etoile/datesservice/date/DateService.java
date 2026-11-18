@@ -8,6 +8,8 @@ import com.etoile.datesservice.date.dto.DatePlanResponse;
 import com.etoile.datesservice.date.dto.NewTimeRequest;
 import com.etoile.datesservice.date.dto.SuggestionRequest;
 import com.etoile.datesservice.date.dto.VoteRequest;
+import com.etoile.datesservice.notify.DateEventType;
+import com.etoile.datesservice.notify.DateEvents;
 import com.etoile.datesservice.security.CurrentUser;
 import com.etoile.datesservice.security.Role;
 import org.springframework.http.HttpStatus;
@@ -33,13 +35,15 @@ public class DateService {
     private final MovieSuggestionRepository suggestions;
     private final RescheduleRepository reschedules;
     private final VoteRepository votes;
+    private final DateEvents events;
 
     public DateService(DatePlanRepository datePlans, MovieSuggestionRepository suggestions,
-                       RescheduleRepository reschedules, VoteRepository votes) {
+                       RescheduleRepository reschedules, VoteRepository votes, DateEvents events) {
         this.datePlans = datePlans;
         this.suggestions = suggestions;
         this.reschedules = reschedules;
         this.votes = votes;
+        this.events = events;
     }
 
     // ---------- Create ----------
@@ -52,6 +56,7 @@ public class DateService {
                         .map(s -> new MovieSuggestion(date, me, s.title().trim(), s.releaseYear(),
                                 s.synopsis(), s.youtubeUrl(), s.genres()))
                         .toList());
+        events.publish(DateEventType.DATE_PROPOSED, date);
         return DatePlanResponse.from(date, saved);
     }
 
@@ -59,6 +64,7 @@ public class DateService {
     public DatePlanResponse createMeeting(CurrentUser me, CreateMeetingDateRequest req) {
         DatePlan date = datePlans.save(DatePlan.meeting(me, req.startsAt(), req.place().trim(),
                 req.mapsLink(), req.activity()));
+        events.publish(DateEventType.DATE_PROPOSED, date);
         return DatePlanResponse.from(date, List.of());
     }
 
@@ -69,6 +75,7 @@ public class DateService {
         }
         DatePlan date = datePlans.save(DatePlan.trip(me, req.startsAt(), req.endsAt(), req.place().trim(),
                 req.itinerary()));
+        events.publish(DateEventType.DATE_PROPOSED, date);
         return DatePlanResponse.from(date, List.of());
     }
 
@@ -112,6 +119,7 @@ public class DateService {
         requireStatus(date, DateStatus.PROPOSED);
         requireNotStarted(date);
         date.accept();
+        events.publish(DateEventType.DATE_ACCEPTED, date);
         return toResponse(me, date);
     }
 
@@ -122,6 +130,7 @@ public class DateService {
         requireStatus(date, DateStatus.PROPOSED);
         requireNotStarted(date);
         date.reject();
+        events.publish(DateEventType.DATE_REJECTED, date);
         return toResponse(me, date);
     }
 
@@ -135,6 +144,7 @@ public class DateService {
         requireNotStarted(date);
         date.cancel(me.role());
         reschedules.findByDatePlanIdAndStatus(id, RescheduleStatus.OPEN).ifPresent(r -> r.cancel(me.role()));
+        events.publish(DateEventType.DATE_CANCELLED, date);
         return toResponse(me, date);
     }
 
@@ -149,6 +159,7 @@ public class DateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A reschedule is already in progress");
         }
         reschedules.save(new Reschedule(date, me.role()));
+        events.publish(DateEventType.RESCHEDULE_REQUESTED, date);
         return toResponse(me, date);
     }
 
@@ -160,6 +171,7 @@ public class DateService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You asked for this reschedule; the other person acknowledges it");
         }
         r.acknowledge();
+        events.publish(DateEventType.RESCHEDULE_ACKNOWLEDGED, date);
         return toResponse(me, date);
     }
 
@@ -179,6 +191,7 @@ public class DateService {
         }
         date.moveTo(req.startsAt(), endsAt);
         r.resolve(me.role(), req.startsAt());
+        events.publish(DateEventType.NEW_TIME_SET, date);
         return toResponse(me, date);
     }
 
@@ -190,6 +203,7 @@ public class DateService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the person who asked can cancel the reschedule");
         }
         r.cancel(me.role());
+        events.publish(DateEventType.RESCHEDULE_CANCELLED, date);
         return toResponse(me, date);
     }
 
@@ -211,6 +225,7 @@ public class DateService {
         suggestions.save(new MovieSuggestion(date, me, req.title().trim(), req.releaseYear(),
                 req.synopsis(), req.youtubeUrl(), req.genres()));
         resetVoting(date);
+        events.publish(DateEventType.MOVIE_SUGGESTED, date, req.title().trim(), null);
         return toResponse(me, date);
     }
 
@@ -251,6 +266,7 @@ public class DateService {
         requireFreeSlot(me, id);
         s.bringBack(me);
         resetVoting(date);
+        events.publish(DateEventType.MOVIE_SUGGESTED, date, s.getTitle(), null);
         return toResponse(me, date);
     }
 
@@ -288,6 +304,7 @@ public class DateService {
             MovieSuggestion other = theirs.get().getSuggestion();
             if (other.getId().equals(choice.getId())) {
                 date.decide(choice, DecisionMethod.VOTE);
+                events.publish(DateEventType.MOVIE_DECIDED, date, choice.getTitle(), DecisionMethod.VOTE);
             } else {
                 MovieSuggestion herPick = me.role() == Role.HER ? choice : other;
                 MovieSuggestion himPick = me.role() == Role.HIM ? choice : other;
@@ -295,7 +312,10 @@ public class DateService {
                 running.stream()
                         .filter(s -> !s.getId().equals(herPick.getId()) && !s.getId().equals(himPick.getId()))
                         .forEach(MovieSuggestion::moveToShelf);
+                events.publish(DateEventType.VOTE_SPLIT, date);
             }
+        } else if (mine.isEmpty()) {
+            events.publish(DateEventType.VOTED, date);   // first vote only, not when changing it
         }
         return toResponse(me, date);
     }
@@ -325,6 +345,7 @@ public class DateService {
                 .forEach(MovieSuggestion::moveToShelf);
         chosen.markAgreed();
         date.decide(chosen, wasNarrowed ? DecisionMethod.AGREED_NARROWED : DecisionMethod.AGREED_OTHER);
+        events.publish(DateEventType.MOVIE_DECIDED, date, chosen.getTitle(), date.getDecisionMethod());
         return toResponse(me, date);
     }
 
@@ -341,6 +362,7 @@ public class DateService {
         MovieSuggestion loser = herWins ? date.getHimPick() : date.getHerPick();
         loser.moveToShelf();
         date.decide(winner, DecisionMethod.RANDOM);
+        events.publish(DateEventType.MOVIE_DECIDED, date, winner.getTitle(), DecisionMethod.RANDOM);
         return toResponse(me, date);
     }
 

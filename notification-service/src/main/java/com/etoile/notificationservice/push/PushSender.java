@@ -46,8 +46,9 @@ public class PushSender {
                     to, targets.size(), m.groupKey(), m.title(), m.body());
             return;
         }
+        log.info("Sending to {} ({} device(s)) [{}] {} | {}", to, targets.size(), m.groupKey(), m.title(), m.body());
         for (DeviceToken device : targets) {
-            Message message = Message.builder()
+            deliver(to, device, Message.builder()
                     .setToken(device.getToken())
                     .setNotification(Notification.builder().setTitle(m.title()).setBody(m.body()).build())
                     .setAndroidConfig(AndroidConfig.builder()
@@ -55,23 +56,48 @@ public class PushSender {
                             .setNotification(AndroidNotification.builder().setTag(m.groupKey()).build())
                             .build())
                     .putAllData(m.data())
-                    .build();
-            try {
-                messaging.send(message);
-                log.info("Sent [{}] to {}", m.groupKey(), to);
-            } catch (FirebaseMessagingException e) {
-                MessagingErrorCode code = e.getMessagingErrorCode();
-                ErrorCode general = e.getErrorCode();   // works even when Firebase's reply couldn't be read
-                boolean deadToken = code == MessagingErrorCode.UNREGISTERED
-                        || code == MessagingErrorCode.INVALID_ARGUMENT
-                        || general == ErrorCode.INVALID_ARGUMENT
-                        || general == ErrorCode.NOT_FOUND;
-                if (deadToken) {
-                    log.warn("Removing dead device token for {} ({})", to, code != null ? code : general);
-                    devices.delete(device);
-                } else {
-                    log.error("Push to {} failed: {}", to, e.getMessage());
-                }
+                    .build());
+        }
+    }
+
+    // Data-only push: no sound by itself. The phone app replaces the notification with this tag quietly.
+    public void sendSilent(Role to, PushMessage m) {
+        List<DeviceToken> targets = devices.findByRole(to);
+        if (messaging == null) {
+            log.info("[LOG-ONLY] would quietly update {} ({} device(s)) [{}] {} | {}",
+                    to, targets.size(), m.groupKey(), m.title(), m.body());
+            return;
+        }
+        log.info("Quietly updating {} ({} device(s)) [{}] {} | {}", to, targets.size(), m.groupKey(), m.title(), m.body());
+        for (DeviceToken device : targets) {
+            deliver(to, device, Message.builder()
+                    .setToken(device.getToken())
+                    .setAndroidConfig(AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH).build())
+                    .putAllData(m.data())
+                    .putData("silent", "true")
+                    .putData("tag", m.groupKey())
+                    .putData("title", m.title())
+                    .putData("body", m.body())
+                    .build());
+        }
+    }
+
+    private void deliver(Role to, DeviceToken device, Message message) {
+        try {
+            messaging.send(message);
+            log.info("Delivered to {}", to);
+        } catch (FirebaseMessagingException e) {
+            MessagingErrorCode code = e.getMessagingErrorCode();
+            ErrorCode general = e.getErrorCode();   // works even when Firebase's reply couldn't be read
+            boolean deadToken = code == MessagingErrorCode.UNREGISTERED
+                    || code == MessagingErrorCode.INVALID_ARGUMENT
+                    || general == ErrorCode.INVALID_ARGUMENT
+                    || general == ErrorCode.NOT_FOUND;
+            if (deadToken) {
+                log.warn("Removing dead device token for {} ({})", to, code != null ? code : general);
+                devices.delete(device);
+            } else {
+                log.error("Push to {} failed: {}", to, e.getMessage());
             }
         }
     }
