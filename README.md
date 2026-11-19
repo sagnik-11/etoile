@@ -117,7 +117,7 @@ etoile/
 
 | Part | Status |
 |---|---|
-| auth-service | ✅ Done: signup, login, BCrypt, JWT, HIM/HER roles |
+| auth-service | ✅ Done: signup, login, change password, BCrypt, JWT, HIM/HER roles |
 | dates-service | ✅ Done: dates, accept/reject/cancel, rescheduling, movie shortlist/shelf, secret voting, random pick, listing, date events for notifications |
 | notification-service | ✅ Done: device registration, FCM push with merging, date notifications, send/need love, reminders with quiet hours |
 | android-app | ⏳ Not started |
@@ -184,6 +184,7 @@ Every endpoint except signup and login needs the header `Authorization: Bearer <
 |---|---|---|---|
 | `POST` | `/api/auth/signup` | `email`, `password` (8–72), `displayName`, `role` (`HIM`/`HER`) | `201` → `token`, `userId`, `displayName`, `role` |
 | `POST` | `/api/auth/login` | `email`, `password` | `200` → `token`, `userId`, `displayName`, `role` |
+| `POST` | `/api/auth/change-password` | `currentPassword`, `newPassword` (8–72) | Login required. `200` → fresh `token` and user info |
 
 ### dates-service (`:8082`)
 
@@ -302,7 +303,7 @@ Times are stored and returned in UTC (`Z`). The app converts them to local time.
 - [x] dates-service: secret voting, call decision, weighted random pick
 - [x] dates-service: reschedule requests
 - [x] dates-service: list upcoming / past dates, date details
-- [ ] auth-service: change password
+- [x] auth-service: change password
 - [x] notification-service: FCM push with merging, date notifications
 - [x] notification-service: send love / need love, reminders with quiet hours
 - [ ] deployment (Render or Oracle Cloud)

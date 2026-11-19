@@ -76,4 +76,8 @@ public class User {
         return createdAt;
     }
 
+    public void changePassword(String newPasswordHash) {
+        this.passwordHash = newPasswordHash;
+    }
+
 }
