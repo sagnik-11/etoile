@@ -19,7 +19,7 @@ Built as a hands-on learning project: **Kotlin + Jetpack Compose** on Android an
 ### How a date works
 
 - **Propose → accept / reject / cancel.** The receiver gets a notification and can accept or reject (rejecting is free). Cancelling costs saying *sorry* five times: the proposer can withdraw a pending invitation, and once a date is accepted either person can cancel it.
-- **Movie suggestions.** Title and release year are required. Synopsis, YouTube trailer (shown as a thumbnail) and up to 5 genres (shown as coloured capsules) are optional.
+- **Movie suggestions.** Title and release year are required. Synopsis, YouTube trailer (opens in YouTube) and up to 5 genres (shown as capsules) are optional.
 - **Rescheduling.** A reschedule is a *request*, not a new time. The other person gets reminders (paused at night) until they open it and acknowledge with a cheeky button, which leads to a "We need to talk…" page. You agree on a time together, then either of you enters it (only after the acknowledgement). Only the requester can cancel a reschedule. Allowed any time before the date starts.
 
 ### Picking the movie 🍿
@@ -64,15 +64,17 @@ Anime: `ANIME` `SHONEN` `SHOJO` `SEINEN` `JOSEI` `ISEKAI` `MECHA` `SLICE_OF_LIFE
 ```mermaid
 flowchart LR
     app["📱 Android app<br/>Kotlin + Compose"]
+    caddy["Caddy<br/>https front door"]
     auth["auth-service<br/>:8081"]
     dates["dates-service<br/>:8082"]
     notif["notification-service<br/>:8083"]
     fcm["Firebase Cloud<br/>Messaging"]
     db[("Neon Postgres<br/>schemas: public · dates · notifications")]
 
-    app -- "signup / login → JWT" --> auth
-    app -- "Bearer JWT" --> dates
-    app -- "Bearer JWT" --> notif
+    app -- "https" --> caddy
+    caddy -- "/api/auth" --> auth
+    caddy -- "/api/dates, /api/me" --> dates
+    caddy -- "/api/love, /api/devices, /api/notifications" --> notif
     dates -. "date events" .-> notif
     notif --> fcm --> app
     auth --> db
@@ -80,7 +82,7 @@ flowchart LR
     notif --> db
 ```
 
-- **No API gateway (v1).** The app calls each service directly.
+- **One https address.** In production, [Caddy](https://caddyserver.com) is the only thing open to the internet. It gets a free certificate automatically and forwards each request to the right service by its path. Sign-up and the internal `/api/events` path are blocked from outside.
 - **One database, separate schemas.** Each service owns its own tables.
 - **Stateless JWT auth.** auth-service signs tokens (HS256). The other services only verify them, reading the user's id and role straight from the token.
 - **Date events.** After a change is saved, dates-service tells notification-service in the background, forwarding the acting user's own JWT. If notification-service is down, the date action still succeeds.
@@ -94,10 +96,10 @@ flowchart LR
 |---|---|
 | Backend | Java 21, Spring Boot 4.1, Spring Security (OAuth2 Resource Server / Nimbus JWT), Spring Data JPA, Bean Validation |
 | Database | PostgreSQL on [Neon](https://neon.tech) (free tier) |
-| Android | Kotlin, Jetpack Compose *(planned)* |
+| Android | Kotlin, Jetpack Compose (Material 3), Retrofit + kotlinx.serialization, DataStore, Navigation Compose, Firebase Messaging |
 | Push | Firebase Cloud Messaging (Firebase Admin SDK) |
-| Hosting | [Render](https://render.com) free tier *(planned)* |
-| Build | Maven |
+| Hosting | Oracle Cloud Always Free (Ampere ARM VM), Docker Compose, Caddy (https), DuckDNS (free domain) |
+| Build | Maven (backend), Gradle (Android) |
 
 ---
 
@@ -108,7 +110,8 @@ etoile/
 ├── auth-service/          # signup, login, JWT issuing
 ├── dates-service/         # dates, suggestions, voting, rescheduling
 ├── notification-service/  # push notifications, love, reminders
-└── android-app/           # Kotlin + Compose client (planned)
+├── android-app/           # Kotlin + Compose client
+└── deploy/                # Dockerfile, docker-compose, Caddyfile, .env template
 ```
 
 ---
@@ -120,8 +123,8 @@ etoile/
 | auth-service | ✅ Done: signup, login, change password, BCrypt, JWT, HIM/HER roles |
 | dates-service | ✅ Done: dates, accept/reject/cancel, rescheduling, movie shortlist/shelf, secret voting, random pick, listing, date events for notifications |
 | notification-service | ✅ Done: device registration, FCM push with merging, date notifications, send/need love, reminders with quiet hours |
-| android-app | ⏳ Not started |
-| Deployment (Render) | ⏳ Not started |
+| android-app | ✅ Done: login, home, dates, movie voting, love, push notifications, profile |
+| Deployment | ✅ Live on Oracle Cloud (Always Free) behind Caddy https |
 
 ---
 
@@ -171,6 +174,64 @@ Run each service's main class from IntelliJ:
 | notification-service | `com.etoile.notificationservice.NotificationServiceApplication` | 8083 |
 
 Tables are created automatically on startup (`ddl-auto=update`).
+
+### Run the Android app
+
+Open `android-app/` in Android Studio and press Run. By default the app talks to the live server. To use services running on your PC over USB instead:
+
+```powershell
+.\gradlew :app:installDebug -PetoileLocal=true
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8081 tcp:8081
+```
+(repeat `adb reverse` for 8082 and 8083).
+
+Push notifications need `android-app/app/google-services.json` from the Firebase console (same Firebase project as the backend key). It is git-ignored; without it the app still works, just without pushes.
+
+---
+
+## Android app 📱
+
+- **Dark, starry look:** navy sky with softly twinkling stars, serif headings, thin hairline borders. One accent colour per person: **gold** for HIM, **rose** for HER; the layout is identical. Fits any screen size, from small phones to tablets.
+- **Home:** greeting, the next date with a live countdown and status, "invites waiting for your answer", quick tiles, and the love pill (×N).
+- **Dates:** upcoming / past lists, planning a movie, meeting or trip, and a page per date with accept / decline, cancel (5 sorrys), and the reschedule flow.
+- **Movies:** shortlist, secret voting, *"Votes split 🤔 Time for a call 📞"*, agreeing after the call, the 60/40 random pick, and the shelf.
+- **Love:** tap the heart as often as you like (quick taps are sent as one burst), or press *Need love 🥺*.
+- **Notifications:** tapping one opens that date or the love tab; open screens refresh when one arrives.
+- **You:** change password, log out.
+
+---
+
+## Deployment ☁️
+
+Runs on one Oracle Cloud **Always Free** Ampere VM (2 OCPU, 12 GB, Ubuntu 24.04) with Docker Compose. Everything is in [`deploy/`](deploy/):
+
+| File | What it does |
+|---|---|
+| `Dockerfile` | One recipe for all three services: builds the jar with Maven, runs it on a Java 21 JRE as a non-root user |
+| `docker-compose.yml` | The three services plus Caddy. Only Caddy publishes ports (80, 443) |
+| `Caddyfile` | https for the domain, routing by path, blocks private paths |
+| `.env.example` | The secrets to fill in. The real `.env` exists **only on the server** (git-ignored) |
+
+**First setup on the VM** (after opening ports 80/443 in the VCN security list):
+
+```bash
+sudo apt-get update -y && sudo apt-get install -y docker.io docker-compose-v2 git
+sudo usermod -aG docker ubuntu            # then log out and back in
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save
+git clone https://github.com/sagnik-11/etoile.git
+cd etoile/deploy && cp .env.example .env && chmod 600 .env   # fill in the values
+docker compose up -d --build
+```
+
+**Update after pushing new code:**
+
+```bash
+cd ~/etoile && git pull && cd deploy && docker compose up -d --build --force-recreate
+```
+
+**Useful:** `docker compose ps` (status), `docker compose logs -f dates` (live logs of one service).
 
 ---
 
@@ -306,6 +367,10 @@ Times are stored and returned in UTC (`Z`). The app converts them to local time.
 - [x] auth-service: change password
 - [x] notification-service: FCM push with merging, date notifications
 - [x] notification-service: send love / need love, reminders with quiet hours
-- [ ] deployment (Render or Oracle Cloud)
-- [ ] android-app
-- [ ] Deploy to Render (free tier)
+- [x] android-app
+- [x] deployment (Oracle Cloud Always Free, Docker, Caddy https)
+
+### Ideas for later
+
+- In-app chat with disappearing messages
+- Support for more than one couple

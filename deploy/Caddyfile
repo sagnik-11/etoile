@@ -6,23 +6,16 @@
 	# Never public: both accounts already exist, and /api/events is
 	# only for dates-service -> notification-service inside the server.
 	@private path /api/auth/signup /api/events /api/events/*
-	respond @private 404
-
-	handle /api/auth/* {
-		reverse_proxy auth:8081
-	}
-
+	@auth path /api/auth/*
 	@dates path /api/dates /api/dates/* /api/me
-	handle @dates {
-		reverse_proxy dates:8082
-	}
-
 	@notifications path /api/love /api/love/* /api/devices /api/devices/* /api/notifications/*
-	handle @notifications {
-		reverse_proxy notifications:8083
-	}
 
-	handle {
+	# "route" keeps these rules in exactly this order (block first, then forward)
+	route {
+		respond @private 404
+		reverse_proxy @auth auth:8081
+		reverse_proxy @dates dates:8082
+		reverse_proxy @notifications notifications:8083
 		respond 404
 	}
 }
