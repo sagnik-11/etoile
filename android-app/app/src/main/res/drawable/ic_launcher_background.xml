@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Navy night sky with a few faint stars -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0A0F24"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#66FFFFFF"
+        android:pathData="M28,30 m-0.8,0 a0.8,0.8 0 1,0 1.6,0 a0.8,0.8 0 1,0 -1.6,0 M80,82 m-0.7,0 a0.7,0.7 0 1,0 1.4,0 a0.7,0.7 0 1,0 -1.4,0 M30,80 m-0.6,0 a0.6,0.6 0 1,0 1.2,0 a0.6,0.6 0 1,0 -1.2,0 M82,40 m-0.5,0 a0.5,0.5 0 1,0 1,0 a0.5,0.5 0 1,0 -1,0 M24,56 m-0.5,0 a0.5,0.5 0 1,0 1,0 a0.5,0.5 0 1,0 -1,0" />
+</vector>

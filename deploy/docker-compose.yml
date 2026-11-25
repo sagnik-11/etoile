@@ -1,0 +1,56 @@
+# Runs the whole backend on the server: 3 services + Caddy (https front door).
+# Secrets come from a file called .env next to this one, which exists ONLY on the server.
+# Start / update:  docker compose up -d --build
+
+services:
+  auth:
+    build: { context: ../auth-service, dockerfile: ../deploy/Dockerfile }
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      DB_URL: ${DB_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  dates:
+    build: { context: ../dates-service, dockerfile: ../deploy/Dockerfile }
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      DB_URL: ${DB_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      # Talks to notification-service inside the server, not over the internet
+      NOTIFICATIONS_URL: http://notifications:8083
+
+  notifications:
+    build: { context: ../notification-service, dockerfile: ../deploy/Dockerfile }
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      DB_URL: ${DB_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      FIREBASE_CREDENTIALS: ${FIREBASE_CREDENTIALS}
+
+  # The only thing open to the internet. Gets a free https certificate automatically.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [auth, dates, notifications]
+
+volumes:
+  caddy_data:
+  caddy_config:

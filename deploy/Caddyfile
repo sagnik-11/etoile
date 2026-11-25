@@ -1,0 +1,28 @@
+# Front door: https for {$DOMAIN} (e.g. etoile-stars.duckdns.org),
+# sends each request to the right service by its path.
+{$DOMAIN} {
+	encode gzip
+
+	# Never public: both accounts already exist, and /api/events is
+	# only for dates-service -> notification-service inside the server.
+	@private path /api/auth/signup /api/events /api/events/*
+	respond @private 404
+
+	handle /api/auth/* {
+		reverse_proxy auth:8081
+	}
+
+	@dates path /api/dates /api/dates/* /api/me
+	handle @dates {
+		reverse_proxy dates:8082
+	}
+
+	@notifications path /api/love /api/love/* /api/devices /api/devices/* /api/notifications/*
+	handle @notifications {
+		reverse_proxy notifications:8083
+	}
+
+	handle {
+		respond 404
+	}
+}
